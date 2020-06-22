@@ -5,6 +5,7 @@ import os.path
 import re
 import logging
 import argparse
+import asyncio
 from datetime import datetime
 from urllib.request import urlopen, urlretrieve
 from bs4 import BeautifulSoup
@@ -90,7 +91,7 @@ def get_post_info(url):
             img_name_parts = img.get("src").split("/")
             post_body_clean = post_body_clean + img_name_parts[-1] + "\n"
 
-        return (post_date + "-" + clean_post_title + ".txt", post_body_clean)
+        return (post_date + "-" + clean_post_title + ".txt", post_body_clean, post_images)
 
     except ConnectionResetError:
         _LOGGER.error("Connection closed .. .try again.", exc_info=True)
@@ -100,8 +101,7 @@ def get_post_info(url):
 def save_post_info(post):
     """Save post data to a file."""
     subdirectory = post[0].split(".")[0]
-    file_name = post[0]
-    post_text = post[1]
+    file_name, post_text, _ = post
 
     folder_name = os.path.join("Posts", subdirectory)
 
@@ -180,14 +180,20 @@ def slurp_blog(blog_url, year, month):
         _LOGGER.error("Failed to make folder %s", folder_name, exc_info=True)
 
     for post_link in post_links:
+        # Create a task here
         post = get_post_info(post_link)
+
+        # Wait for post to return
+        # Create a task here
         save_post_info(post)
+        # Create a task here
         save_post_images(post_link)
 
 
 def main(blog_url, blog_year):
     """Run the script."""
-    for i in range(12):
+    for i in range(1):
+        # Create a task here
         slurp_blog(blog_url, blog_year, i + 1)
 
 
