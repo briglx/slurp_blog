@@ -114,9 +114,9 @@ Now that you have all test dependencies installed, you can run tests on the proj
 
     isort -rc .
     codespell  --skip="./.*,*.csv,*.json,*.pyc,./docs/_build/*,./htmlcov/*"
-    black setup.py billing merge script tests
-    flake8 setup.py billing merge script tests
-    pylint setup.py billing merge script tests
+    black .
+    flake8 .
+    pylint .
     pydocstyle billing merge script tests
     python -m pytest tests
     python -m pytest --cov-report term-missing --cov=billing

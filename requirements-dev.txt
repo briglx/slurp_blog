@@ -1,3 +1,6 @@
+-r requirements.txt
+
+codespell==2.0.0
 black==19.10b0
 flake8==3.7.9
 pydocstyle==5.0.2

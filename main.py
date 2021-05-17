@@ -1,72 +1,103 @@
-#!/usr/bin/env python3
-"""Slurp all Images and text from the blog into a folder."""
+import asyncio
+import logging
 import os
 import os.path
 import re
-import logging
-import argparse
-import asyncio
+import sys
 from datetime import datetime
-from urllib.request import urlopen, urlretrieve
+
+import aiofiles
+import aiohttp
+from aiohttp import ClientSession
 from bs4 import BeautifulSoup
 
-
-_LOGGER = logging.getLogger(__name__)
-_LOGGER.setLevel(logging.DEBUG)
-ch = logging.StreamHandler()
-formatter = logging.Formatter('%(asctime)s - %(name)s - %(levelname)s - %(message)s')
-ch.setFormatter(formatter)
-_LOGGER.addHandler(ch)
-
-def get_posts_by_year(blog_url, year, month):
-    """Get url for each post by month and year return as list.
-
-    Defaults to returning empty list if no posts are found.
-    """
-    url = blog_url + str(year) + "/" + str(month).zfill(2)
-    response = urlopen(url)
-    soup = BeautifulSoup(response, "html.parser")
-
-    archive_list = soup.find(attrs={"id": "BlogArchive1_ArchiveList"})
-
-    uls = archive_list.findChildren("ul", recursive=False)
-
-    pattern = re.compile(
-        r"^(\w|\:|\/|\.)+" + str(year) + "/" + str(month).zfill(2) + r"/(\w|\-)+"
-    )
-
-    for ul in uls:
-
-        children = ul.findChildren(recursive=False)
-        for child in children:
-            a = child.find("a", attrs={"class", "post-count-link"}, recursive=False)
-
-            link_year = int(a.text.strip())
-            if link_year == year:
-                # ml = child.find(
-                #     'a',
-                #     attrs={'class', 'post-count-link'},
-                #     recursive=False
-                # )
-
-                month_links = ul.find_all("a")
-                elinks = [
-                    ml.get("href")
-                    for ml in month_links
-                    if pattern.match(ml.get("href"))
-                ]
-
-    return elinks
+logging.basicConfig(
+    format="%(asctime)s %(levelname)s:%(name)s: %(message)s",
+    level=logging.DEBUG,
+    datefmt="%H:%M:%S",
+    stream=sys.stderr,
+)
+logger = logging.getLogger(__name__)
+logging.getLogger("chardet.charsetprober").disabled = True
 
 
-def get_post_info(url):
-    """Get post text and list of images and return as tuple.
+async def fetch_resp(url: str, session: ClientSession, **kwargs) -> str:
+    resp = await session.request(method="GET", url=url, **kwargs)
+    resp.raise_for_status()
+    return resp
 
-    Defaults to returning empty tuple if post is not found.
-    """
+
+async def fetch_html(url: str, session: ClientSession, **kwargs) -> str:
+    resp = await session.request(method="GET", url=url, **kwargs)
+    resp.raise_for_status()
+    html = await resp.text()
+    return html
+
+
+async def get_posts_by_year(blog_url, year, month, session):
+
     try:
+        url = blog_url + str(year) + "/" + str(month).zfill(2)
 
-        response = urlopen(url)
+        response = await fetch_html(url=url, session=session)
+
+    except (aiohttp.ClientError, aiohttp.http_exceptions.HttpProcessingError,) as e:
+        logger.error(
+            "aiohttp exception for %s [%s]: %s",
+            url,
+            getattr(e, "status", None),
+            getattr(e, "message", None),
+        )
+    except Exception as e:
+        logger.exception(
+            "Non-aiohttp exception occurred:  %s", getattr(e, "__dict__", {})
+        )
+    else:
+
+        soup = BeautifulSoup(response, "html.parser")
+        archive_list = soup.find(attrs={"id": "BlogArchive1_ArchiveList"})
+        uls = archive_list.findChildren("ul", recursive=False)
+
+        pattern = re.compile(
+            r"^(\w|\:|\/|\.)+" + str(year) + "/" + str(month).zfill(2) + r"/(\w|\-)+"
+        )
+
+        for ul in uls:
+
+            children = ul.findChildren(recursive=False)
+            for child in children:
+                a = child.find("a", attrs={"class", "post-count-link"}, recursive=False)
+
+                link_year = int(a.text.strip())
+                if link_year == year:
+                    month_links = ul.find_all("a")
+                    elinks = [
+                        ml.get("href")
+                        for ml in month_links
+                        if pattern.match(ml.get("href"))
+                    ]
+
+        return elinks
+
+
+async def get_post_info(post_link, session):
+
+    try:
+        response = await fetch_html(url=post_link, session=session)
+
+    except (aiohttp.ClientError, aiohttp.http_exceptions.HttpProcessingError,) as e:
+        logger.error(
+            "aiohttp exception for %s [%s]: %s",
+            post_link,
+            getattr(e, "status", None),
+            getattr(e, "message", None),
+        )
+    except Exception as e:
+        logger.exception(
+            "Non-aiohttp exception occurred:  %s", getattr(e, "__dict__", {})
+        )
+    else:
+
         soup = BeautifulSoup(response, "html.parser")
 
         post_date_str = soup.find(attrs={"class": "date-header"}).text.strip()
@@ -75,12 +106,13 @@ def get_post_info(url):
 
         post_title = soup.find(attrs={"class": "post-title"}).text.strip()
         clean_post_title = "".join(e for e in post_title if e.isalnum() or e == " ")
+        clean_post_title = clean_post_title.strip()
 
         post_body = soup.find(attrs={"class": "post-body"})
 
-        # lines = postBody.text.strip().splitlines()
+        post_body_clean = clean_post_title + "\n\n"
 
-        post_body_clean = "\n\n".join(
+        post_body_clean = post_body_clean + "\n\n".join(
             [s.strip() for s in post_body.text.strip().splitlines() if s]
         )
 
@@ -89,128 +121,91 @@ def get_post_info(url):
         post_body_clean = post_body_clean + "\n\n"
         for img in post_images:
             img_name_parts = img.get("src").split("/")
+            if "NEF" in img_name_parts:
+                post_body_clean = post_body_clean + "!!!WARNING FILE TYPE!!!! "
             post_body_clean = post_body_clean + img_name_parts[-1] + "\n"
 
-        return (post_date + "-" + clean_post_title + ".txt", post_body_clean, post_images)
+        return (
+            post_date + "-" + clean_post_title + ".txt",
+            post_body_clean,
+            post_images,
+        )
 
-    except ConnectionResetError:
-        _LOGGER.error("Connection closed .. .try again.", exc_info=True)
-        return True, "Connection Closed for " + url
 
+async def save_post_info(post):
 
-def save_post_info(post):
-    """Save post data to a file."""
     subdirectory = post[0].split(".")[0]
     file_name, post_text, _ = post
-
     folder_name = os.path.join("Posts", subdirectory)
 
+    logger.info("Making folder: %s", folder_name)
+
     try:
-        _LOGGER.info("Making folder: %s", folder_name)
         os.mkdir(folder_name)
-    except FileExistsError: 
-        _LOGGER.info("Folder '%s' already exists", folder_name)
     except Exception:
-        _LOGGER.error("Failed to make folder %s", folder_name, exc_info=True)
+        logger.exception("Failed to make folder:  %s", folder_name)
+    else:
 
-    try:
         full_file_name = os.path.join(folder_name, file_name)
-        with open(full_file_name, "w", encoding="utf8") as file:
-            file.write(post_text)
-    except Exception:
-        _LOGGER.error("Failed to save file %s", full_file_name, exc_info=True)
+        async with aiofiles.open(full_file_name, "w", encoding="utf8") as file:
+            await file.write(post_text)
 
 
-async def save_post_images(url):
-    """Download post images and save to folder."""
+async def save_post_images(post_image_link, sub_directory, session):
+
+    img_parts = post_image_link.get("src").split("/")
+    img_parts[-2] = "s2400"
+    img_url = "/".join(img_parts)
+
+    dest_path = os.path.join("Posts", sub_directory, os.path.basename(img_url))
+
     try:
-        response = urlopen(url)
+        async with session.get(img_url) as response:
+            with open(dest_path, "wb") as fd:
+                async for data in response.content.iter_chunked(1024):
+                    fd.write(data)
 
-        soup = BeautifulSoup(response, "html.parser")
-
-        post_date_str = soup.find(attrs={"class": "date-header"}).text.strip()
-        post_date_time = datetime.strptime(post_date_str, "%A, %B %d, %Y")
-        post_date = post_date_time.strftime("%Y%m%d")
-
-        post_title = soup.find(attrs={"class": "post-title"}).text.strip()
-        clean_post_title = "".join(e for e in post_title if e.isalnum() or e == " ")
-        sub_directory = post_date + "-" + clean_post_title
-
-        post_body = soup.find(attrs={"class": "post-body"})
-        post_images = post_body.find_all("img")
-
-        try:
-            os.mkdir(os.path.join("Posts", sub_directory))
-        except Exception:
-            pass
-
-        for img in post_images:
-            img_parts = img.get("src").split("/")
-            img_parts[-2] = "s2400"
-
-            img_url = "/".join(img_parts)
-
-            try:
-                _LOGGER.info("Geting image %s", os.path.basename(img_url))
-                urlretrieve(
-                    img_url,
-                    os.path.join("Posts", sub_directory, os.path.basename(img_url)),
-                )
-            except Exception:
-                _LOGGER.error(
-                    "Failed to download for %s", sub_directory + " " + img_url,
-                    exc_info=True,
-                )
-
-    except ConnectionResetError:
-
-        _LOGGER.error("Connection closed .. .try again.", exc_info=True)
+    except (aiohttp.ClientError, aiohttp.http_exceptions.HttpProcessingError,) as e:
+        logger.error(
+            "aiohttp exception for %s [%s]: %s",
+            img_url,
+            getattr(e, "status", None),
+            getattr(e, "message", None),
+        )
+    except Exception as e:
+        logger.exception(
+            "Non-aiohttp exception occurred:  %s", getattr(e, "__dict__", {})
+        )
 
 
-async def slurp_blog(blog_url, year, month):
-    """Fetch text and images for a given blog year and month.
+async def slurp_blog(blog_url, year, month, session):
 
-    Creates a post folder with a subfolder for each post.
-    """
-    post_links = get_posts_by_year(blog_url, year, month)
-
-    folder_name = os.path.join("Posts")
-    try:
-        _LOGGER.info("Making folder: %s", folder_name)
-        if(not os.path.isdir(folder_name)):        
-            os.mkdir(folder_name)
-    except Exception:
-        _LOGGER.error("Failed to make folder %s", folder_name, exc_info=True)
+    post_links = await get_posts_by_year(blog_url, year, month, session)
 
     for post_link in post_links:
-        # Create a task here
-        post = get_post_info(post_link)
 
-        # Wait for post to return
-        # Create a task here
-        save_post_info(post)
-        # Create a task here
-        await save_post_images(post_link)
+        post = await get_post_info(post_link, session)
+
+        _, _, post_images = post
+
+        await save_post_info(post)
+
+        sub_directory = post[0].split(".")[0]
+        tasks = []
+        for post_image_link in post_images:
+            tasks.append(save_post_images(post_image_link, sub_directory, session))
+        await asyncio.gather(*tasks)
 
 
 async def main(blog_url, blog_year):
-    """Run the script."""
-    for i in range(12):
-        # Create a task here
-        task1 = asyncio.create_task(slurp_blog(blog_url, blog_year, i + 1))
-        await task1
+    async with ClientSession() as session:
+        tasks = []
+        for i in range(12):
+            tasks.append(slurp_blog(blog_url, blog_year, i + 1, session))
+        await asyncio.gather(*tasks)
 
 
 if __name__ == "__main__":
-    _LOGGER.info("Starting script")
-    parser = argparse.ArgumentParser(
-        description="Slurp posts and images from blogger.", add_help=True,
-    )
-    parser.add_argument("--blog_url", "-b", help="Blog Url")
-    parser.add_argument("--year", "-y", type=int,  help="Year to slurp")
-    args = parser.parse_args()
-
-    # blog_url = args.blog_url or "http://example.blogspot.com/"
-    # blog_year = args.year or 2018
-
+    blog_url = "http://ezraandkian.blogspot.com/"
+    blog_year = 2020
     asyncio.run(main(blog_url, blog_year))
