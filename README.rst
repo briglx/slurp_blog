@@ -113,13 +113,12 @@ Now that you have all test dependencies installed, you can run tests on the proj
 .. code-block:: bash
 
     isort -rc .
-    codespell  --skip="./.*,*.csv,*.json,*.pyc,./docs/_build/*,./htmlcov/*"
-    black .
-    flake8 .
-    pylint .
-    pydocstyle billing merge script tests
-    python -m pytest tests
-    python -m pytest --cov-report term-missing --cov=billing
+    codespell  main.py
+    black main.py
+    flake8 main.py
+    pylint main.py
+    pydocstyle main.py
+
 
 References
 ==========

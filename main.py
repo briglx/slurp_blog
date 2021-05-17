@@ -1,3 +1,4 @@
+"""Slurp blog posts and images."""
 import asyncio
 import logging
 import os
@@ -17,84 +18,80 @@ logging.basicConfig(
     datefmt="%H:%M:%S",
     stream=sys.stderr,
 )
-logger = logging.getLogger(__name__)
+LOGGER = logging.getLogger(__name__)
 logging.getLogger("chardet.charsetprober").disabled = True
 
 
 async def fetch_resp(url: str, session: ClientSession, **kwargs) -> str:
+    """Get generic response."""
     resp = await session.request(method="GET", url=url, **kwargs)
     resp.raise_for_status()
     return resp
 
 
 async def fetch_html(url: str, session: ClientSession, **kwargs) -> str:
+    """Get post html."""
     resp = await session.request(method="GET", url=url, **kwargs)
     resp.raise_for_status()
     html = await resp.text()
     return html
 
 
-async def get_posts_by_year(blog_url, year, month, session):
+def get_month_links(soup, year, month):
+    """Parse html for month links."""
+    archive_list = soup.find(attrs={"id": "BlogArchive1_ArchiveList"})
+    uls = archive_list.findChildren("ul", recursive=False)
 
+    pattern = re.compile(
+        r"^(\w|\:|\/|\.)+" + str(year) + "/" + str(month).zfill(2) + r"/(\w|\-)+"
+    )
+
+    for unordered_list in uls:
+        for child in unordered_list.findChildren(recursive=False):
+            link = child.find("a", attrs={"class", "post-count-link"}, recursive=False)
+            link_year = int(link.text.strip())
+            if link_year == year:
+                month_links = unordered_list.find_all("a")
+                elinks = [
+                    ml.get("href")
+                    for ml in month_links
+                    if pattern.match(ml.get("href"))
+                ]
+
+    return elinks
+
+
+async def get_posts_by_year(blog_url, year, month, session):
+    """Find post for given year."""
     try:
         url = blog_url + str(year) + "/" + str(month).zfill(2)
-
         response = await fetch_html(url=url, session=session)
 
-    except (aiohttp.ClientError, aiohttp.http_exceptions.HttpProcessingError,) as e:
-        logger.error(
+    except (aiohttp.ClientError, aiohttp.http_exceptions.HttpProcessingError,) as ex:
+        LOGGER.error(
             "aiohttp exception for %s [%s]: %s",
             url,
-            getattr(e, "status", None),
-            getattr(e, "message", None),
-        )
-    except Exception as e:
-        logger.exception(
-            "Non-aiohttp exception occurred:  %s", getattr(e, "__dict__", {})
+            getattr(ex, "status", None),
+            getattr(ex, "message", None),
         )
     else:
 
         soup = BeautifulSoup(response, "html.parser")
-        archive_list = soup.find(attrs={"id": "BlogArchive1_ArchiveList"})
-        uls = archive_list.findChildren("ul", recursive=False)
-
-        pattern = re.compile(
-            r"^(\w|\:|\/|\.)+" + str(year) + "/" + str(month).zfill(2) + r"/(\w|\-)+"
-        )
-
-        for ul in uls:
-
-            children = ul.findChildren(recursive=False)
-            for child in children:
-                a = child.find("a", attrs={"class", "post-count-link"}, recursive=False)
-
-                link_year = int(a.text.strip())
-                if link_year == year:
-                    month_links = ul.find_all("a")
-                    elinks = [
-                        ml.get("href")
-                        for ml in month_links
-                        if pattern.match(ml.get("href"))
-                    ]
-
-        return elinks
+        month_links = get_month_links(soup, year, month)
+        return month_links
 
 
 async def get_post_info(post_link, session):
-
+    """Get blog post text and image names."""
     try:
         response = await fetch_html(url=post_link, session=session)
 
-    except (aiohttp.ClientError, aiohttp.http_exceptions.HttpProcessingError,) as e:
-        logger.error(
+    except (aiohttp.ClientError, aiohttp.http_exceptions.HttpProcessingError,) as ex:
+        LOGGER.error(
             "aiohttp exception for %s [%s]: %s",
             post_link,
-            getattr(e, "status", None),
-            getattr(e, "message", None),
-        )
-    except Exception as e:
-        logger.exception(
-            "Non-aiohttp exception occurred:  %s", getattr(e, "__dict__", {})
+            getattr(ex, "status", None),
+            getattr(ex, "message", None),
         )
     else:
 
@@ -133,26 +130,25 @@ async def get_post_info(post_link, session):
 
 
 async def save_post_info(post):
-
+    """Save post text to folder."""
     subdirectory = post[0].split(".")[0]
     file_name, post_text, _ = post
     folder_name = os.path.join("Posts", subdirectory)
 
-    logger.info("Making folder: %s", folder_name)
+    LOGGER.info("Making folder: %s", folder_name)
 
     try:
         os.mkdir(folder_name)
-    except Exception:
-        logger.exception("Failed to make folder:  %s", folder_name)
-    else:
+    except FileExistsError:
+        LOGGER.exception("Folder already exists to make folder:  %s", folder_name)
 
-        full_file_name = os.path.join(folder_name, file_name)
-        async with aiofiles.open(full_file_name, "w", encoding="utf8") as file:
-            await file.write(post_text)
+    full_file_name = os.path.join(folder_name, file_name)
+    async with aiofiles.open(full_file_name, "w", encoding="utf8") as file:
+        await file.write(post_text)
 
 
 async def save_post_images(post_image_link, sub_directory, session):
-
+    """Save post images."""
     img_parts = post_image_link.get("src").split("/")
     img_parts[-2] = "s2400"
     img_url = "/".join(img_parts)
@@ -161,25 +157,21 @@ async def save_post_images(post_image_link, sub_directory, session):
 
     try:
         async with session.get(img_url) as response:
-            with open(dest_path, "wb") as fd:
+            with open(dest_path, "wb") as post_file:
                 async for data in response.content.iter_chunked(1024):
-                    fd.write(data)
+                    post_file.write(data)
 
-    except (aiohttp.ClientError, aiohttp.http_exceptions.HttpProcessingError,) as e:
-        logger.error(
+    except (aiohttp.ClientError, aiohttp.http_exceptions.HttpProcessingError,) as ex:
+        LOGGER.error(
             "aiohttp exception for %s [%s]: %s",
             img_url,
-            getattr(e, "status", None),
-            getattr(e, "message", None),
-        )
-    except Exception as e:
-        logger.exception(
-            "Non-aiohttp exception occurred:  %s", getattr(e, "__dict__", {})
+            getattr(ex, "status", None),
+            getattr(ex, "message", None),
         )
 
 
 async def slurp_blog(blog_url, year, month, session):
-
+    """Slurp posts and images for given month."""
     post_links = await get_posts_by_year(blog_url, year, month, session)
 
     for post_link in post_links:
@@ -197,7 +189,10 @@ async def slurp_blog(blog_url, year, month, session):
         await asyncio.gather(*tasks)
 
 
-async def main(blog_url, blog_year):
+async def main():
+    """Slurp each month."""
+    blog_url = "http://ezraandkian.blogspot.com/"
+    blog_year = 2020
     async with ClientSession() as session:
         tasks = []
         for i in range(12):
@@ -206,6 +201,4 @@ async def main(blog_url, blog_year):
 
 
 if __name__ == "__main__":
-    blog_url = "http://ezraandkian.blogspot.com/"
-    blog_year = 2020
-    asyncio.run(main(blog_url, blog_year))
+    asyncio.run(main())
