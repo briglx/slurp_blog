@@ -108,6 +108,8 @@ def save_post_info(post):
     try:
         _LOGGER.info("Making folder: %s", folder_name)
         os.mkdir(folder_name)
+    except FileExistsError: 
+        _LOGGER.info("Folder '%s' already exists", folder_name)
     except Exception:
         _LOGGER.error("Failed to make folder %s", folder_name, exc_info=True)
 
@@ -119,7 +121,7 @@ def save_post_info(post):
         _LOGGER.error("Failed to save file %s", full_file_name, exc_info=True)
 
 
-def save_post_images(url):
+async def save_post_images(url):
     """Download post images and save to folder."""
     try:
         response = urlopen(url)
@@ -149,6 +151,7 @@ def save_post_images(url):
             img_url = "/".join(img_parts)
 
             try:
+                _LOGGER.info("Geting image %s", os.path.basename(img_url))
                 urlretrieve(
                     img_url,
                     os.path.join("Posts", sub_directory, os.path.basename(img_url)),
@@ -164,7 +167,7 @@ def save_post_images(url):
         _LOGGER.error("Connection closed .. .try again.", exc_info=True)
 
 
-def slurp_blog(blog_url, year, month):
+async def slurp_blog(blog_url, year, month):
     """Fetch text and images for a given blog year and month.
 
     Creates a post folder with a subfolder for each post.
@@ -187,14 +190,15 @@ def slurp_blog(blog_url, year, month):
         # Create a task here
         save_post_info(post)
         # Create a task here
-        save_post_images(post_link)
+        await save_post_images(post_link)
 
 
-def main(blog_url, blog_year):
+async def main(blog_url, blog_year):
     """Run the script."""
-    for i in range(1):
+    for i in range(12):
         # Create a task here
-        slurp_blog(blog_url, blog_year, i + 1)
+        task1 = asyncio.create_task(slurp_blog(blog_url, blog_year, i + 1))
+        await task1
 
 
 if __name__ == "__main__":
@@ -209,4 +213,4 @@ if __name__ == "__main__":
     # blog_url = args.blog_url or "http://example.blogspot.com/"
     # blog_year = args.year or 2018
 
-    main(blog_url, blog_year)
+    asyncio.run(main(blog_url, blog_year))
