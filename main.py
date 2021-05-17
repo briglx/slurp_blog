@@ -206,7 +206,7 @@ if __name__ == "__main__":
     parser.add_argument("--year", "-y", type=int,  help="Year to slurp")
     args = parser.parse_args()
 
-    blog_url = args.blog_url or "http://example.blogspot.com/"
-    blog_year = args.year or 2018
+    # blog_url = args.blog_url or "http://example.blogspot.com/"
+    # blog_year = args.year or 2018
 
     main(blog_url, blog_year)

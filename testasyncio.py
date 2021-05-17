@@ -114,12 +114,13 @@ async def get_post_info(post_link, session):
 
         post_title = soup.find(attrs={"class": "post-title"}).text.strip()
         clean_post_title = "".join(e for e in post_title if e.isalnum() or e == " ")
+        clean_post_title = clean_post_title.strip()
 
         post_body = soup.find(attrs={"class": "post-body"})
 
-        # lines = postBody.text.strip().splitlines()
+        post_body_clean = clean_post_title + "\n\n"
 
-        post_body_clean = "\n\n".join(
+        post_body_clean = post_body_clean + "\n\n".join(
             [s.strip() for s in post_body.text.strip().splitlines() if s]
         )
 
@@ -128,6 +129,8 @@ async def get_post_info(post_link, session):
         post_body_clean = post_body_clean + "\n\n"
         for img in post_images:
             img_name_parts = img.get("src").split("/")
+            if "NEF" in img_name_parts:
+                post_body_clean = post_body_clean + "!!!WARNING FILE TYPE!!!! "
             post_body_clean = post_body_clean + img_name_parts[-1] + "\n"
 
         return (post_date + "-" + clean_post_title + ".txt", post_body_clean, post_images)
@@ -218,5 +221,5 @@ async def main(blog_url, blog_year):
 
 if __name__ == "__main__":
     blog_url = "http://ezraandkian.blogspot.com/"
-    blog_year = 2019
+    blog_year = 2020
     asyncio.run(main(blog_url, blog_year))
