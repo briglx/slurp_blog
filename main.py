@@ -1,4 +1,5 @@
 """Slurp blog posts and images."""
+import argparse
 import asyncio
 import logging
 import os
@@ -11,6 +12,10 @@ import aiofiles
 import aiohttp
 from aiohttp import ClientSession
 from bs4 import BeautifulSoup
+
+DEFAULT_BLOG_URL = "http://ezraandkian.blogspot.com/"
+DEFAULT_BLOG_YEAR = int(datetime.now().date().strftime("%Y"))
+
 
 logging.basicConfig(
     format="%(asctime)s %(levelname)s:%(name)s: %(message)s",
@@ -58,7 +63,7 @@ def get_month_links(soup, year, month):
                     if pattern.match(ml.get("href"))
                 ]
 
-    return elinks
+                return elinks
 
 
 async def get_posts_by_year(blog_url, year, month, session):
@@ -191,14 +196,50 @@ async def slurp_blog(blog_url, year, month, session):
 
 async def main():
     """Slurp each month."""
-    blog_url = "http://ezraandkian.blogspot.com/"
-    blog_year = 2020
+    
+
+
+    parser = argparse.ArgumentParser(
+        description="Slurp blog.",
+        add_help=True,
+    )
+    parser.add_argument(
+        "--blog_url",
+        "-u",
+        help="Blog URL.",
+    )
+    parser.add_argument(
+        "--year",
+        "-y",
+        type=int,
+        help="Year to slurp. Default is current year",
+    )
+    parser.add_argument(
+        "--month",
+        "-m",
+        type=int,
+        help="Month to slurp. Default is all months",
+    )
+
+    args = parser.parse_args()
+
+    blog_url = args.blog_url or DEFAULT_BLOG_URL
+    blog_year = args.year or DEFAULT_BLOG_YEAR
+    blog_month = args.month
+
+
     async with ClientSession() as session:
         tasks = []
-        for i in range(12):
-            tasks.append(slurp_blog(blog_url, blog_year, i + 1, session))
+        if blog_month:
+            tasks.append(slurp_blog(blog_url, blog_year, blog_month, session))
+        else:
+            for i in range(12):
+                tasks.append(slurp_blog(blog_url, blog_year, i + 1, session))
         await asyncio.gather(*tasks)
 
 
 if __name__ == "__main__":
+
+    
+
     asyncio.run(main())
