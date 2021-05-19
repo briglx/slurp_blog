@@ -64,6 +64,7 @@ def get_month_links(soup, year, month):
                 ]
 
                 return elinks
+    return None
 
 
 async def get_posts_by_year(blog_url, year, month, session):
@@ -196,29 +197,15 @@ async def slurp_blog(blog_url, year, month, session):
 
 async def main():
     """Slurp each month."""
-    
-
-
-    parser = argparse.ArgumentParser(
-        description="Slurp blog.",
-        add_help=True,
+    parser = argparse.ArgumentParser(description="Slurp blog.", add_help=True,)
+    parser.add_argument(
+        "--blog_url", "-u", help="Blog URL.",
     )
     parser.add_argument(
-        "--blog_url",
-        "-u",
-        help="Blog URL.",
+        "--year", "-y", type=int, help="Year to slurp. Default is current year",
     )
     parser.add_argument(
-        "--year",
-        "-y",
-        type=int,
-        help="Year to slurp. Default is current year",
-    )
-    parser.add_argument(
-        "--month",
-        "-m",
-        type=int,
-        help="Month to slurp. Default is all months",
+        "--month", "-m", type=int, help="Month to slurp. Default is all months",
     )
 
     args = parser.parse_args()
@@ -226,7 +213,6 @@ async def main():
     blog_url = args.blog_url or DEFAULT_BLOG_URL
     blog_year = args.year or DEFAULT_BLOG_YEAR
     blog_month = args.month
-
 
     async with ClientSession() as session:
         tasks = []
@@ -239,7 +225,5 @@ async def main():
 
 
 if __name__ == "__main__":
-
-    
 
     asyncio.run(main())
