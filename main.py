@@ -8,11 +8,13 @@ import re
 import sys
 from datetime import datetime
 
-import aiofiles
 import aiohttp
+from aiofiles import open as async_open
+from aiofiles import os as async_os
 from aiohttp import ClientSession
 from bs4 import BeautifulSoup
 
+DEFAULT_POST_FOLDER = "posts"
 DEFAULT_BLOG_URL = "http://ezraandkian.blogspot.com/"
 DEFAULT_BLOG_YEAR = int(datetime.now().date().strftime("%Y"))
 
@@ -139,17 +141,17 @@ async def save_post_info(post):
     """Save post text to folder."""
     subdirectory = post[0].split(".")[0]
     file_name, post_text, _ = post
-    folder_name = os.path.join("Posts", subdirectory)
+    folder_name = os.path.join(get_post_folder(), subdirectory)
 
     LOGGER.info("Making folder: %s", folder_name)
 
-    try:
-        os.mkdir(folder_name)
-    except FileExistsError:
-        LOGGER.exception("Folder already exists to make folder:  %s", folder_name)
+    if not await async_os.path.exists(folder_name):
+        await async_os.mkdir(folder_name)
+    else:
+        LOGGER.info("Folder already exists to make folder:  %s", folder_name)
 
     full_file_name = os.path.join(folder_name, file_name)
-    async with aiofiles.open(full_file_name, "w", encoding="utf8") as file:
+    async with async_open(full_file_name, "w", encoding="utf8") as file:
         await file.write(post_text)
 
 
@@ -159,7 +161,9 @@ async def save_post_images(post_image_link, sub_directory, session):
     img_parts[-2] = "s2400"
     img_url = "/".join(img_parts)
 
-    dest_path = os.path.join("Posts", sub_directory, os.path.basename(img_url))
+    dest_path = os.path.join(
+        get_post_folder(), sub_directory, os.path.basename(img_url)
+    )
 
     try:
         async with session.get(img_url) as response:
@@ -195,6 +199,25 @@ async def slurp_blog(blog_url, year, month, session):
         await asyncio.gather(*tasks)
 
 
+def get_post_folder():
+    """Get post folder."""
+    current_dir = os.getcwd()
+    folder_name = os.path.join(current_dir, DEFAULT_POST_FOLDER)
+    return folder_name
+
+
+async def create_post_folder():
+    """Create post folder."""
+    folder_name = get_post_folder()
+
+    LOGGER.info("Making folder: %s", folder_name)
+
+    if not await async_os.path.exists(folder_name):
+        await async_os.mkdir(folder_name)
+    else:
+        LOGGER.info("Folder already exists to make folder:  %s", folder_name)
+
+
 async def main():
     """Slurp each month."""
     parser = argparse.ArgumentParser(description="Slurp blog.", add_help=True,)
@@ -214,6 +237,9 @@ async def main():
     blog_year = args.year or DEFAULT_BLOG_YEAR
     blog_month = args.month
 
+    # check that posts folder exists
+    await create_post_folder()
+
     async with ClientSession() as session:
         tasks = []
         if blog_month:
@@ -226,4 +252,5 @@ async def main():
 
 if __name__ == "__main__":
 
-    asyncio.run(main())
+    # asyncio.run(main())
+    asyncio.get_event_loop().run_until_complete(main())

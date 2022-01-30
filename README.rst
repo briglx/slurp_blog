@@ -7,6 +7,12 @@ This project will copy blog post images and text from blogger.
 Use
 ==========
 
+Pull down the latest post and images with the flowing:
+
+.. code-blco:: bash 
+
+    python main.py --blog_url BLOG_URL --year 2021
+
 Blog slurp doesn't provide too many options. You can list them by running `python main.py -h`:
 
 .. code-block:: python
@@ -21,26 +27,18 @@ Blog slurp doesn't provide too many options. You can list them by running `pytho
                             Blog Url
     --year YEAR, -y YEAR  Year to slurp
 
-For Time of use plans pass in the argument `is_tou`
-
-.. code-block:: python
-
-    from datetime import datetime, timedelta
-    from srpenergy.client import SrpEnergyClient
-
-    accountid = 'your account id'
-    username = 'your username'
-    password = 'your password'
-    end_date = datetime.now()
-    start_date = datetime.now() - timedelta(days=2)
-
-    client = SrpEnergyClient(accountid, username, password)
-    usage = client.usage(start_date, end_date, True)
-
-    date, hour, isodate, kwh, cost = usage[0]
-
 Development
 ===========
+
+Setup your dev environment by creating a virtual environment
+
+.. code-block:: bash
+    
+    # virtualenv \path\to\.venv -p path\to\specific_version_python.exe
+    python -m venv .venv
+    .venv\scripts\activate
+
+    deactivate
 
 Style Guidelines
 ----------------
