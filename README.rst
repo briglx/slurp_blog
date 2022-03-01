@@ -9,7 +9,7 @@ Use
 
 Pull down the latest post and images with the flowing:
 
-.. code-blco:: bash 
+.. code-block:: bash 
 
     python main.py --blog_url BLOG_URL --year 2021
 
@@ -39,6 +39,13 @@ Setup your dev environment by creating a virtual environment
     .venv\scripts\activate
 
     deactivate
+
+Copy the local_example.env and replace values:
+
+.. code-block:: bash
+
+    mv local_example.env local.env
+
 
 Style Guidelines
 ----------------

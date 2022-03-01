@@ -102,18 +102,23 @@ async def get_post_info(post_link, session):
             getattr(ex, "message", None),
         )
     else:
-
+        clean_post_title = None
         soup = BeautifulSoup(response, "html.parser")
 
         post_date_str = soup.find(attrs={"class": "date-header"}).text.strip()
         post_date_time = datetime.strptime(post_date_str, "%A, %B %d, %Y")
         post_date = post_date_time.strftime("%Y%m%d")
 
-        post_title = soup.find(attrs={"class": "post-title"}).text.strip()
-        clean_post_title = "".join(e for e in post_title if e.isalnum() or e == " ")
-        clean_post_title = clean_post_title.strip()
+        post_title_el = soup.find(attrs={"class": "post-title"})
+        if post_title_el:
+            post_title = post_title_el.text.strip()
+            clean_post_title = "".join(e for e in post_title if e.isalnum() or e == " ")
+            clean_post_title = clean_post_title.strip()
 
         post_body = soup.find(attrs={"class": "post-body"})
+
+        if not clean_post_title:
+            clean_post_title = "No Post Title"
 
         post_body_clean = clean_post_title + "\n\n"
 
@@ -157,8 +162,10 @@ async def save_post_info(post):
 
 async def save_post_images(post_image_link, sub_directory, session):
     """Save post images."""
+
+
     img_parts = post_image_link.get("src").split("/")
-    img_parts[-2] = "s2400"
+    # img_parts[-2] = "s2400"  # Why adding s2400? This is breaking images in 202110
     img_url = "/".join(img_parts)
 
     dest_path = os.path.join(
@@ -167,11 +174,18 @@ async def save_post_images(post_image_link, sub_directory, session):
 
     try:
         async with session.get(img_url) as response:
+
+            # headers = response.headers
+            # if "filename" in headers:
+            #     img_name = headers["inline;filename"]
+            #     dest_path = os.path.join(
+            #         get_post_folder(), sub_directory, img_name
+            #     )
             with open(dest_path, "wb") as post_file:
                 async for data in response.content.iter_chunked(1024):
                     post_file.write(data)
 
-    except (aiohttp.ClientError, aiohttp.http_exceptions.HttpProcessingError,) as ex:
+    except (aiohttp.ClientError, aiohttp.http_exceptions.HttpProcessingError,FileNotFoundError) as ex:
         LOGGER.error(
             "aiohttp exception for %s [%s]: %s",
             img_url,
@@ -233,9 +247,22 @@ async def main():
 
     args = parser.parse_args()
 
-    blog_url = args.blog_url or DEFAULT_BLOG_URL
-    blog_year = args.year or DEFAULT_BLOG_YEAR
+    blog_url = args.blog_url or os.environ.get("BLOG_URL")
+    blog_year = args.year or os.environ.get("BLOG_YEAR")
     blog_month = args.month
+
+    if not blog_url:
+        raise ValueError(
+            "The blog url is required."
+            "Have you set the BLOG_URL env variable?"
+        )
+
+    if not blog_year:
+        raise ValueError(
+            "The year is required."
+            "Have you set the BLOG_YEAR env variable?"
+        )
+
 
     # check that posts folder exists
     await create_post_folder()
