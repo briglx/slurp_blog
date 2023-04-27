@@ -5,3 +5,4 @@ launch.json
 settings.json
 .venv
 local.env
+.env

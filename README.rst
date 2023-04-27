@@ -40,11 +40,11 @@ Setup your dev environment by creating a virtual environment
 
     deactivate
 
-Copy the local_example.env and replace values:
+Copy the example.env and replace values:
 
 .. code-block:: bash
 
-    mv local_example.env local.env
+    cp example.env .env
 
 
 Style Guidelines
